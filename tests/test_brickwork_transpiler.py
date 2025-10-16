@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from graphix_brickwork_transpiler.brickwork import _nqubits_from_layers, transpile_to_layers
 from graphix.parameter import Placeholder
 from graphix.transpiler import Circuit
+from graphix_brickwork_transpiler.brickwork import _nqubits_from_layers, transpile_to_layers  # noqa: PLC2701
 
 if TYPE_CHECKING:
     from numpy.random import Generator
@@ -21,7 +21,7 @@ class TestBrickworkTranspilerUnitGates:
         state_mbqc = pattern.simulate_pattern(rng=fx_rng)
         assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
 
-    def test_rx(self, fx_rng: Generator) -> None:
+    def test_rx(self, fx_rng: Generator) -> None:  # noqa: D102
         theta = fx_rng.uniform() * 2 * np.pi
         circuit = Circuit(2)
         circuit.rx(0, theta)
@@ -30,7 +30,7 @@ class TestBrickworkTranspilerUnitGates:
         state_mbqc = pattern.simulate_pattern(rng=fx_rng)
         assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
 
-    def test_rz(self, fx_rng: Generator) -> None:
+    def test_rz(self, fx_rng: Generator) -> None:  # noqa: D102
         theta = fx_rng.uniform() * 2 * np.pi
         circuit = Circuit(2)
         circuit.rz(0, theta)
