@@ -390,7 +390,7 @@ def __insert_rotation(
         the rotation instruction to insert
 
     """
-    axis = XZ.X if instr.kind == InstructionKind.RX else XZ.Z  # TODO What is the point of this?
+    axis = XZ.X if instr.kind == InstructionKind.RX else XZ.Z
     target_depth = depth[instr.target]
     if target_depth > 0:
         previous_layer = layers[target_depth - 1]
@@ -549,7 +549,7 @@ class ConstructionOrder(Enum):
     DeviantRight = "deviant-right"
 
 
-def _nqubits_from_layers(layers: list[Layer]) -> int:
+def nqubits_from_layers(layers: list[Layer]) -> int:
     """Return the number of qubits represented by the given layers.
 
     Parameters
@@ -592,7 +592,7 @@ def layers_to_measurement_table(layers: list[Layer]) -> list[list[Angle]]:
     list[list[Angle]]
 
     """
-    nqubits = _nqubits_from_layers(layers)
+    nqubits = (layers)
     table: list[list[Angle]] = []
     for layer_index, layer in enumerate(layers):
         all_brick_measures = [brick.measures() for brick in layer.bricks]  # Should be a list of two lists of four floats, one for each qubit (top, bottom) in the brick
@@ -611,11 +611,10 @@ def layers_to_measurement_table(layers: list[Layer]) -> list[list[Angle]]:
     return table
 
 
-def measurement_table_to_pattern(width: int, table: list[list[Angle]], order: ConstructionOrder) -> Pattern:
+def measurement_table_to_pattern(width: int, table: list[list[Angle]]) -> Pattern:
     """Convert a measurement table into a MBQC measurement pattern.
 
-    This function constructs the measurement pattern according to the specified construction order.
-    The construction order determines how entanglement operations are ordered relative to measurement commands.
+    This function constructs the measurement pattern.
 
     Parameters
     ----------
@@ -623,8 +622,6 @@ def measurement_table_to_pattern(width: int, table: list[list[Angle]], order: Co
         number of qubits in the circuit
     table : list[list[Angle]]
         the measurement table, where each sublist represents a column of measurement angles
-    order : ConstructionOrder
-        the construction order to use for building the pattern
 
     Returns
     -------
@@ -636,33 +633,53 @@ def measurement_table_to_pattern(width: int, table: list[list[Angle]], order: Co
     pattern = Pattern(input_nodes)
     nodes = input_nodes
     node_generator = NodeGenerator(width)
-    for time, column in enumerate(table):
+    for column_index, column in enumerate(table):
+        for qubit, angle in enumerate(column):
+            next_node, commands = j_commands(node_generator, nodes[qubit], angle)
+            if (column_index % 4 in {2, 0} and column_index > 0):
+                brick_layer = (column_index - 1) // 4
+                if qubit % 2 == brick_layer % 2 and qubit != width - 1:
+                    pattern.add(
+                        E(nodes=(nodes[qubit], nodes[qubit + 1]))
+                    )
+                pattern.extend(commands)
+            else:
+                pattern.extend(commands)
+            nodes[qubit] = next_node
+    last_brick_layer = (len(table) - 1) // 4
+    for qubit in range(last_brick_layer % 2, width - 1, 2):
+        pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
+    return pattern
+
+
+def measurement_table_to_pattern_deviant(width: int, table: list[list[Angle]]) -> Pattern:
+    """Convert a measurement table into a MBQC measurement pattern using deviant construction order.
+
+    This function constructs the measurement pattern with an adjusted order in the measurement commands and entanglements.
+
+    Parameters
+    ----------
+    width : int
+        number of qubits in the circuit
+    table : list[list[Angle]]
+        the measurement table, where each sublist represents a column of measurement angles
+
+    Returns
+    -------
+    Pattern
+        the resulting MBQC measurement pattern
+
+    """
+    input_nodes = list(range(width))
+    pattern = Pattern(input_nodes)
+    nodes = input_nodes
+    node_generator = NodeGenerator(width)
+    for column_index, column in enumerate(table):
         postponed = None  # for deviant order
         for qubit, angle in enumerate(column):
             next_node, commands = j_commands(node_generator, nodes[qubit], angle)
-            if (time % 4 in {2, 0} and time > 0) and order != ConstructionOrder.Deviant:
-                brick_layer = (time - 1) // 4
-                if order == ConstructionOrder.Canonical:
-                    if qubit % 2 == brick_layer % 2 and qubit != width - 1:
-                        pattern.add(
-                            E(nodes=(nodes[qubit], nodes[qubit + 1]))
-                        )
-                    pattern.extend(commands)
-                elif order == ConstructionOrder.DeviantRight:
-                    if qubit % 2 == brick_layer % 2 and qubit != width - 1:
-                        pattern.extend(commands[:2])
-                        postponed = (nodes[qubit], commands[2:])
-                    elif postponed is None:
-                        pattern.extend(commands)
-                    else:
-                        pattern.extend(commands[:2])
-                        previous_qubit, previous_commands = postponed
-                        postponed = None
-                        pattern.add(E(nodes=(previous_qubit, nodes[qubit])))
-                        pattern.extend(previous_commands)
-                        pattern.extend(commands[2:])
-            elif time % 4 in {1, 3} and order == ConstructionOrder.Deviant:
-                brick_layer = time // 4
+            if column_index % 4 in {1, 3}:
+                brick_layer = column_index // 4
                 if qubit % 2 == brick_layer % 2 and qubit != width - 1:
                     pattern.add(commands[0])
                     postponed = (nodes[qubit], commands[1:])
@@ -684,12 +701,56 @@ def measurement_table_to_pattern(width: int, table: list[list[Angle]], order: Co
             else:
                 pattern.extend(commands)
             nodes[qubit] = next_node
-    if order != ConstructionOrder.Deviant:
-        last_brick_layer = (len(table) - 1) // 4
-        for qubit in range(last_brick_layer % 2, width - 1, 2):
-            pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
     return pattern
 
+
+def measurement_table_to_pattern_deviant_right(width: int, table: list[list[Angle]]) -> Pattern:
+    """Convert a measurement table into a MBQC measurement pattern using an alternative deviant construction order.
+
+    This function constructs the measurement pattern with an adjusted order in the measurement commands and entanglements.
+
+    Parameters
+    ----------
+    width : int
+        number of qubits in the circuit
+    table : list[list[Angle]]
+        the measurement table, where each sublist represents a column of measurement angles
+
+    Returns
+    -------
+    Pattern
+        the resulting MBQC measurement pattern
+
+    """
+    input_nodes = list(range(width))
+    pattern = Pattern(input_nodes)
+    nodes = input_nodes
+    node_generator = NodeGenerator(width)
+    for column_index, column in enumerate(table):
+        postponed = None  # for deviant order
+        for qubit, angle in enumerate(column):
+            next_node, commands = j_commands(node_generator, nodes[qubit], angle)
+            if (column_index % 4 in {2, 0} and column_index > 0):
+                brick_layer = (column_index - 1) // 4
+                if qubit % 2 == brick_layer % 2 and qubit != width - 1:
+                    pattern.extend(commands[:2])
+                    postponed = (nodes[qubit], commands[2:])
+                elif postponed is None:
+                    pattern.extend(commands)
+                else:
+                    pattern.extend(commands[:2])
+                    previous_qubit, previous_commands = postponed
+                    postponed = None
+                    pattern.add(E(nodes=(previous_qubit, nodes[qubit])))
+                    pattern.extend(previous_commands)
+                    pattern.extend(commands[2:])
+            else:
+                pattern.extend(commands)
+            nodes[qubit] = next_node
+    last_brick_layer = (len(table) - 1) // 4
+    for qubit in range(last_brick_layer % 2, width - 1, 2):
+        pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
+    return pattern
 
 def layers_to_pattern(width: int, layers: list[Layer], order: ConstructionOrder = ConstructionOrder.Canonical) -> Pattern:
     """Convert layers of bricks into a MBQC measurement pattern.
@@ -712,7 +773,12 @@ def layers_to_pattern(width: int, layers: list[Layer], order: ConstructionOrder 
 
     """
     table = layers_to_measurement_table(layers)
-    return measurement_table_to_pattern(width, table, order)
+    if order == ConstructionOrder.Deviant:
+        return measurement_table_to_pattern_deviant(width, table)
+    elif order == ConstructionOrder.DeviantRight:
+        return measurement_table_to_pattern_deviant_right(width, table)
+    else:
+        return measurement_table_to_pattern(width, table)
 
 
 def transpile_brickwork(circuit: Circuit, order: str = "canonical") -> TranspileResult:
@@ -748,5 +814,48 @@ def transpile_brickwork(circuit: Circuit, order: str = "canonical") -> Transpile
         msg = f"Unknown construction order: {order}. Available orders are 'canonical', 'deviant' and 'deviant-right'."
         raise ValueError(msg)
     pattern = layers_to_pattern(n_node, transpile_to_layers(circuit), order_as_object)
-    classical_outputs = []
+    classical_outputs: list[int] = []
     return TranspileResult(pattern, tuple(classical_outputs))
+
+
+# def instruction_to_jcnot(instr: JCNOTInstruction) -> Iterable[J | CNOT | I]:
+    # """Return a J-∧X decomposition of the instruction. Retain I for constructing bricks.
+
+    # Args:
+    # ----
+    #     instr: the instruction to decompose.
+
+    # Returns:
+    # -------
+    #     the decomposition.
+
+    # """
+    # # Use == for mypy
+    # if instr.kind == JCZInstructionKind.J or instr.kind == JCZInstructionKind.CNOT:  # noqa: PLR1714
+    #     return [instr]
+    # if instr.kind == InstructionKind.I:
+    #     return []
+    # if instr.kind == InstructionKind.H:
+    #     return [J(instr.target, 0)]
+    # if instr.kind == InstructionKind.S:
+    #     return instruction_to_jcz(instruction.RZ(instr.target, pi / 2))
+    # if instr.kind == InstructionKind.X:
+    #     return instruction_to_jcz(instruction.RX(instr.target, pi))
+    # if instr.kind == InstructionKind.Y:
+    #     return instruction_list_to_jcz(decompose_y(instr))
+    # if instr.kind == InstructionKind.Z:
+    #     return instruction_to_jcz(instruction.RZ(instr.target, pi))
+    # if instr.kind == InstructionKind.RX:
+    #     return decompose_rx(instr)
+    # if instr.kind == InstructionKind.RY:
+    #     return decompose_ry(instr)
+    # if instr.kind == InstructionKind.RZ:
+    #     return decompose_rz(instr)
+    # if instr.kind == InstructionKind.CCX:
+    #     return instruction_list_to_jcz(decompose_ccx(instr))
+    # if instr.kind == InstructionKind.RZZ:
+    #     return instruction_list_to_jcz(decompose_rzz(instr))
+    # if instr.kind == InstructionKind.SWAP:
+    #     return instruction_list_to_jcz(decompose_swap(instr))
+    # assert_never(instr.kind)  # TODO function to convert from any gate to J and CNOT - need InstructionKind and dataclasses supporting, calls from deconstruction methods in JCZ package
+# def 

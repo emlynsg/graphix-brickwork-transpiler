@@ -1,1 +1,2 @@
 graphix @ git+https://github.com/TeamGraphix/graphix@master
+graphix_jcz_transpiler @ git+https://github.com/emlynsg/graphix-jcz-transpiler@main
