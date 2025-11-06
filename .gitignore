@@ -208,3 +208,10 @@ __marimo__/
 
 # Other
 .vscode
+
+*~
+*.egg-info/
+__pycache__/
+.coverage
+.vscode/
+.mypy_cache/
