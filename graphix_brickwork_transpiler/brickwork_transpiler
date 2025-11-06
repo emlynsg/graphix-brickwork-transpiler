@@ -18,10 +18,9 @@ from graphix.instruction import InstructionKind
 from graphix.parameter import ExpressionOrFloat
 from graphix.transpiler import Circuit, TranspileResult
 from graphix_jcz_transpiler import (
-    JCZInstructionKind,
     CZ,
-    InternalInstructionError,
     J,
+    JCZInstructionKind,
     decompose_ccx,
     decompose_rx,
     decompose_ry,
@@ -31,17 +30,17 @@ from graphix_jcz_transpiler import (
     decompose_y,
     j_commands,
 )
-from typing_extensions import assert_never
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from graphix.transpiler import Circuit
 
+# TODO @emlynsg: Create function to trim zero bricks from the start and end  # noqa: FIX002, TD003
+# TODO @emlynsg: simplifcation to remove consecutive J(0) in decomposition  # noqa: FIX002, TD003
+
+
 Angle: TypeAlias = ExpressionOrFloat
-
-
-
 
 JCNOTInstruction: TypeAlias = (
     J
@@ -444,6 +443,27 @@ def decompose_cz(instr: CZ) -> Sequence[instruction.H | instruction.CNOT]:
     ]
 
 
+def _cnot_is_local(cnot: instruction.CNOT) -> bool:
+    return abs(cnot.control - cnot.target) == 1
+
+
+def decompose_cnot(instr: instruction.CNOT) -> Sequence[instruction.CNOT]:
+    """Return a decomposition of the CNOT gate as 4 CNOTs if indices are separate."""
+    if _cnot_is_local(instr):
+        return [instr]
+    qubit_indices = [instr.control, instr.target]
+    target_is_lower = bool(qubit_indices.index(min(qubit_indices)))
+    if target_is_lower:
+        return [instruction.CNOT(target=instr.target, control=instr.control - 1),
+                instruction.CNOT(target=instr.control - 1, control=instr.control),
+                instruction.CNOT(target=instr.target, control=instr.control - 1),
+                instruction.CNOT(target=instr.control - 1, control=instr.control)]
+    return [instruction.CNOT(target=instr.target - 1, control=instr.control),
+            instruction.CNOT(target=instr.target, control=instr.target - 1),
+            instruction.CNOT(target=instr.target - 1, control=instr.control),
+            instruction.CNOT(target=instr.target, control=instr.target - 1)]
+
+
 def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT | list[J] | None]:  # noqa: C901
     """Return a decomposition of the instruction.
 
@@ -459,10 +479,8 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
 
     """
     # Use == for mypy
-    if instr.kind == JCZInstructionKind.J:  # Checked
-        raise InternalInstructionError(instr)
     if instr.kind == InstructionKind.CNOT:  # Checked
-        return [instr]
+        return instruction_list_to_jcnot(decompose_cnot(instr))
     if instr.kind == InstructionKind.I:  # Checked
         return [None]
     if instr.kind == InstructionKind.H:  # Checked
@@ -476,24 +494,26 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
     if instr.kind == InstructionKind.Z:  # Checked
         return instruction_to_jcnot(instruction.RZ(instr.target, pi))
     if instr.kind == InstructionKind.RX:  # Checked
-        decomp: list[J] = list(decompose_rx(instr))
-        decomp.extend([J(instr.target, 0), J(instr.target, 0)])
-        return [decomp]
+        x_decomp: list[J] = list(decompose_rx(instr))
+        x_decomp.extend([J(instr.target, 0), J(instr.target, 0)])
+        return [x_decomp]
     if instr.kind == InstructionKind.RY:  # Checked
         return [list(decompose_ry(instr))]
     if instr.kind == InstructionKind.RZ:  # Checked
-        decomp: list[J] = list(decompose_rz(instr))
-        decomp.extend([J(instr.target, 0), J(instr.target, 0)])
-        return [decomp]
-    if instr.kind == JCZInstructionKind.CZ:  # Checked
-        return instruction_list_to_jcnot(decompose_cz(instr))
+        z_decomp: list[J] = list(decompose_rz(instr))
+        z_decomp.extend([J(instr.target, 0), J(instr.target, 0)])
+        return [z_decomp]
     if instr.kind == InstructionKind.CCX:
         return instruction_list_to_jcnot(decompose_ccx(instr))
     if instr.kind == InstructionKind.RZZ:
         return instruction_list_to_jcnot(decompose_rzz(instr))
     if instr.kind == InstructionKind.SWAP:
         return instruction_list_to_jcnot(decompose_swap(instr))
-    assert_never(instr.kind)  # TODO simplifcation to remove consecutive J(0) in decomposition
+    if instr.kind == JCZInstructionKind.J:  # Checked
+        raise ValueError("J instructions should not be decomposed.")
+    if instr.kind == JCZInstructionKind.CZ:  # Checked
+        return instruction_list_to_jcnot(decompose_cz(instr))  # pyright: ignore[reportArgumentType]
+    raise ValueError(f"Unknown instruction kind: {instr.kind}")
 
 
 def instruction_list_to_jcnot(instrs: Sequence[JCNOTInstruction]) -> Sequence[instruction.CNOT | list[J] | None]:
@@ -530,15 +550,20 @@ def transpile_to_layers(circuit: Circuit) -> list[Layer]:
     for instr in circuit.instruction:
         # Use of `if` instead of `match` here for mypy
         if instr.kind == InstructionKind._XC or instr.kind == InstructionKind._ZC or instr.kind == InstructionKind.M:  # noqa: PLR1714
-            raise InternalInstructionError(instr)
+            raise ValueError(f"Unsupported instruction: {instr}")
         for instr_jcnot in instruction_to_jcnot(instr):
             if instr_jcnot is None:  # Checking for identity operations
                 continue
-            if instr.kind == InstructionKind.CNOT:  # Checking for CNOT
-                __insert_cnot(circuit.width, layers, depth, instr_jcnot)
-            else:
+            if isinstance(instr_jcnot, list):  # Checking for J gates
                 assert len(instr_jcnot) == 4  # noqa: PLR2004, S101
                 __insert_single_qubit(circuit.width, layers, depth, instr_jcnot)
+                continue
+            if instr_jcnot.kind == InstructionKind.CNOT:  # Checking for CNOT
+                assert isinstance(instr_jcnot, JCNOTInstruction)  # noqa: S101
+                cnot: instruction.CNOT = instr_jcnot
+                __insert_cnot(circuit.width, layers, depth, cnot)
+            else:
+                raise ValueError(f"Unexpected instruction: {instr_jcnot}")
     return layers
 
 
@@ -709,17 +734,3 @@ def transpile_brickwork(circuit: Circuit, order: str = "canonical") -> Transpile
     pattern = layers_to_pattern(n_node, transpile_to_layers(circuit), order_as_object)
     classical_outputs: list[int] = []
     return TranspileResult(pattern, tuple(classical_outputs))
-
-
-# TODO @emlynsg: Create functions to do non-local CNOTs
-# def remote_to_local_cnot(cnot: CNOT) -> list[CNOT]:
-#     if _cnot_is_local(cnot):
-#         return [cnot]
-#     else:
-#         return [CNOT(), CNOT(), CNOT(), CNOT()]
-
-
-# def _cnot_is_local(cnot: CNOT) -> bool:
-#     return abs(cnot.control - cnot.target) == 1
-
-# TODO @emlynsg: Create function to trim zero bricks from the start and end
