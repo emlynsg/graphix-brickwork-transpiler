@@ -6,9 +6,11 @@ import numpy as np
 import pytest
 from graphix.parameter import Placeholder
 from graphix.transpiler import Circuit
-from numpy.random import Generator
 
 from graphix_brickwork_transpiler import nqubits_from_layers, transpile_brickwork, transpile_to_layers
+
+if TYPE_CHECKING:
+    from numpy.random import Generator
 
 # TODO@emlynsg: Add tests for all other gates.
 
