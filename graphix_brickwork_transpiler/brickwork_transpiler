@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from math import pi
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 from graphix import Pattern, instruction
@@ -20,6 +20,7 @@ from graphix.parameter import ExpressionOrFloat
 from graphix.transpiler import Circuit, TranspileResult
 from graphix_jcz_transpiler import (
     CZ,
+    InternalInstructionError,
     J,
     decompose_ccx,
     decompose_rx,
@@ -30,14 +31,14 @@ from graphix_jcz_transpiler import (
     decompose_y,
     j_commands,
 )
-from typing_extensions import TypeAlias, assert_never
+from typing_extensions import assert_never
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     from graphix.transpiler import Circuit
 
-Angle = ExpressionOrFloat
+Angle: TypeAlias = ExpressionOrFloat
 
 
 class Brick(ABC):
@@ -55,7 +56,9 @@ class Brick(ABC):
 
     """
 
-    is_filled: bool = False
+    def __init__(self) -> None:
+        """Initialize the Brick object."""
+        self.is_filled: bool = False
 
     @abstractmethod
     def measures(self) -> list[list[Angle]]: ...  # noqa: D102
@@ -120,6 +123,7 @@ class SingleQubit:
     is_filled: bool = False
 
     def __init__(self, angles: list[Angle] | None = None) -> None:
+        """Initialize the SingleQubit object with the specified angles of J operations, or as the identity."""
         if angles is None:
             angles = [0.0, 0.0, 0.0, 0.0]
         self.angles = angles
@@ -397,14 +401,17 @@ def transpile_to_layers(circuit: Circuit) -> list[Layer]:
     """
     layers: list[Layer] = []
     depth = [0 for _ in range(circuit.width)]
-    for instr in instruction_list_to_jcnot(circuit.instruction):
+    for instr in circuit.instruction:
         # Use of `if` instead of `match` here for mypy
-        if instr is None:  # Checking for identity operations
+        if instr.kind == InstructionKind._XC or instr.kind == InstructionKind._ZC or instr.kind == InstructionKind.M:  # noqa: PLR1714
+            raise InternalInstructionError(instr)
+        instr_jcnot = instruction_to_jcnot(instr)
+        if instr_jcnot is None:  # Checking for identity operations
             continue
-        if isinstance(instr, list):  # Checking for single qubit operations
-            __insert_single_qubit(circuit.width, layers, depth, instr)
+        if isinstance(instr_jcnot, list):  # Checking for single qubit operations
+            __insert_single_qubit(circuit.width, layers, depth, instr_jcnot)
         else:  # Final option is CNOT
-            __insert_cnot(circuit.width, layers, depth, instr)
+            __insert_cnot(circuit.width, layers, depth, instr_jcnot)
     return layers
 
 
@@ -577,7 +584,7 @@ def transpile_brickwork(circuit: Circuit, order: str = "canonical") -> Transpile
     return TranspileResult(pattern, tuple(classical_outputs))
 
 
-def instruction_to_jcnot(instr: JCNOTInstruction) -> CNOT | list[J] | None:
+def instruction_to_jcnot(instr: JCNOTInstruction) -> list[CNOT | list[J] | None]:
     """Return a decomposition of the instruction.
 
     Instructions are purposefully extended to sets of 4, to isolate each operation to a single brick or sequence of complete bricks.
@@ -593,9 +600,9 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> CNOT | list[J] | None:
     """
     # Use == for mypy
     if instr.kind == InstructionKind.CNOT:
-        return instr  # pyright: ignore[reportReturnType]
+        return [instr]  # pyright: ignore[reportReturnType]
     if instr.kind == InstructionKind.I:
-        return None
+        return [None]
     if instr.kind == InstructionKind.H:
         return instruction_list_to_jcnot(decompose_h(instr))
     if instr.kind == InstructionKind.S:
@@ -609,13 +616,13 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> CNOT | list[J] | None:
     if instr.kind == InstructionKind.RX:
         decomp: list[J] = decompose_rx(instr)  # Aim to return a list of 4 J(theta) for each gate
         decomp.extend([J(instr.target, 0), J(instr.target, 0)])
-        return decomp
+        return [decomp]
     if instr.kind == InstructionKind.RY:
-        return decompose_ry(instr)
+        return [decompose_ry(instr)]
     if instr.kind == InstructionKind.RZ:
         decomp: list[J] = decompose_rz(instr)
         decomp.extend([J(instr.target, 0), J(instr.target, 0)])
-        return decomp
+        return [decomp]
     if instr.kind == InstructionKind.CCX:
         return instruction_list_to_jcnot(decompose_ccx(instr))
     if instr.kind == InstructionKind.RZZ:
@@ -625,7 +632,7 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> CNOT | list[J] | None:
     assert_never(instr.kind)  # TODO simplifcation to remove consecutive J(0) in decomposition
 
 
-def decompose_h(instr: instruction.H) -> list[J]:
+def decompose_h(instr: instruction.H) -> Sequence[J]:
     """Return a decomposition of the Hadamard gate for the brickwork as 3 rotations.
 
     Broadbent et al. (2009) decomposition of the Hadamard gate in the brickwork.
@@ -642,7 +649,7 @@ def decompose_h(instr: instruction.H) -> list[J]:
     return [J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, 0)]
 
 
-def decompose_cz(instr: CZ) -> list[instruction.H | instruction.CNOT]:
+def decompose_cz(instr: CZ) -> Sequence[instruction.H | instruction.CNOT]:
     """Return a decomposition of the CNOT gate as H·∧x·H.
 
     Based on the common CNOT decomposition H·∧z·H.
@@ -686,9 +693,10 @@ class JCNOTInstructionKind(Enum):
 
 
 JCNOTInstruction: TypeAlias = (
-    instruction.CCX
-    | instruction.RZZ
+    J
+    | CZ
     | instruction.CNOT
+    | instruction.RZZ
     | instruction.SWAP
     | instruction.H
     | instruction.S
@@ -699,8 +707,7 @@ JCNOTInstruction: TypeAlias = (
     | instruction.RX
     | instruction.RY
     | instruction.RZ
-    | CZ
-    | J
+    | instruction.CCX
 )
 
 
