@@ -2,8 +2,8 @@
 name = "graphix_brickwork_transpiler"
 version = "1"
 
-[tool.setuptools]
-packages = ["graphix_brickwork_transpiler"]
+[tool.setuptools.packages.find]
+include = ["graphix_brickwork_transpiler"]
 
 [tool.ruff]
 line-length = 120

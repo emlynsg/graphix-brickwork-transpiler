@@ -19,9 +19,9 @@ from graphix.random_objects import rand_circuit
 from graphix.sim.statevec import Statevec
 from graphix.simulator import DefaultMeasureMethod
 from graphix.transpiler import Circuit
-from numpy.random import Generator
+from graphix_brickwork_transpiler import nqubits_from_layers, transpile_brickwork, transpile_to_layers,
 
-from graphix_brickwork_transpiler import nqubits_from_layers, transpile_brickwork, transpile_to_layers
+from numpy.random import Generator
 
 if TYPE_CHECKING:
     from numpy.random import PCG64
