@@ -192,6 +192,8 @@ class SingleQubitPairBrick(Brick):
 
     """
 
+    is_filled: bool = False
+
     def __init__(self) -> None:
         """Initialize the SingleQubitPairBrick with two empty SingleQubit objects."""
         self.top = SingleQubit()
@@ -420,7 +422,12 @@ def decompose_h(instr: instruction.H) -> Sequence[J]:
         the decomposition as a list.
 
     """
-    return [J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, 0)]
+    return [
+        J(instr.target, pi / 2),
+        J(instr.target, pi / 2),
+        J(instr.target, pi / 2),
+        J(instr.target, 0)
+    ]
 
 
 def decompose_cz(instr: CZ) -> Sequence[instruction.H | instruction.CNOT]:
@@ -489,7 +496,7 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
     if instr.kind == InstructionKind.I:
         return [None]
     if instr.kind == InstructionKind.H:
-        return instruction_list_to_jcnot(decompose_h(instr))
+        return [list(decompose_h(instr))]
     if instr.kind == InstructionKind.S:
         return instruction_to_jcnot(instruction.RZ(instr.target, pi / 2))
     if instr.kind == InstructionKind.X:
