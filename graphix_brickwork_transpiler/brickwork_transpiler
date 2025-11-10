@@ -5,12 +5,14 @@ Copyright (C) 2025, QAT team (ENS-PSL, Inria, CNRS).
 
 from __future__ import annotations
 
+import enum
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from math import pi
 from typing import TYPE_CHECKING, TypeAlias
 
+import graphix_jcz_transpiler as jcz
 import numpy as np
 from graphix import Pattern, instruction
 from graphix.command import E
@@ -20,7 +22,7 @@ from graphix.transpiler import Circuit, TranspileResult
 from graphix_jcz_transpiler import (
     CZ,
     J,
-    JCZInstructionKind,
+    # JCZInstructionKind,
     decompose_ccx,
     decompose_rx,
     decompose_ry,
@@ -38,7 +40,6 @@ if TYPE_CHECKING:
 
 # TODO @emlynsg: Create function to trim zero bricks from the start and end  # noqa: FIX002, TD003
 # TODO @emlynsg: simplifcation to remove consecutive J(0) in decomposition  # noqa: FIX002, TD003
-
 
 Angle: TypeAlias = ExpressionOrFloat
 
@@ -509,9 +510,9 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
         return instruction_list_to_jcnot(decompose_rzz(instr))
     if instr.kind == InstructionKind.SWAP:
         return instruction_list_to_jcnot(decompose_swap(instr))
-    if instr.kind == JCZInstructionKind.J:  # Checked
+    if instr.kind == jcz.JCZInstructionKind.J:  # Checked
         raise ValueError("J instructions should not be decomposed.")
-    if instr.kind == JCZInstructionKind.CZ:  # Checked
+    if instr.kind == jcz.JCZInstructionKind.CZ:  # Checked
         return instruction_list_to_jcnot(decompose_cz(instr))  # pyright: ignore[reportArgumentType]
     raise ValueError(f"Unknown instruction kind: {instr.kind}")
 
