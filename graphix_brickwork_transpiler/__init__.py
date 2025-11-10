@@ -3,6 +3,8 @@
 Copyright (C) 2025, QAT team (ENS-PSL, Inria, CNRS).
 """
 
+from __future__ import annotations
+
 from graphix_brickwork_transpiler.brickwork_transpiler import (
     nqubits_from_layers,
     transpile_brickwork,

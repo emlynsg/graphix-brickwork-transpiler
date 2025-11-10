@@ -5,14 +5,11 @@ Copyright (C) 2025, QAT team (ENS-PSL, Inria, CNRS).
 
 from __future__ import annotations
 
-import enum
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 from math import pi
 from typing import TYPE_CHECKING, TypeAlias
 
-import graphix_jcz_transpiler as jcz
 import numpy as np
 from graphix import Pattern, instruction
 from graphix.command import E
@@ -22,7 +19,7 @@ from graphix.transpiler import Circuit, TranspileResult
 from graphix_jcz_transpiler import (
     CZ,
     J,
-    # JCZInstructionKind,
+    JCZInstructionKind,
     decompose_ccx,
     decompose_rx,
     decompose_ry,
@@ -83,6 +80,7 @@ class Brick(ABC):
 
     @abstractmethod
     def measures(self) -> list[list[Angle]]: ...  # noqa: D102
+
     """Returns the measurement angles for the brick. The sublists correspond to the top and bottom qubits in the brick."""
 
 
@@ -397,7 +395,9 @@ def __insert_cnot(
         raise ValueError("Unsupported CNOT: control and target qubits should be consecutive")
     top_qubit_index = min(instr.control, instr.target)  # Chooses top qubit for indexation purposes
     bottom_qubit_index = max(instr.control, instr.target)
-    min_depth = max(depth[top_qubit_index], depth[bottom_qubit_index])  # Ensures the operation is late enough (e.g. top qubit could be 2 deep already)
+    min_depth = max(
+        depth[top_qubit_index], depth[bottom_qubit_index]
+    )  # Ensures the operation is late enough (e.g. top qubit could be 2 deep already)
     target_depth = min_depth if top_qubit_index % 2 == min_depth % 2 else min_depth + 1
     layer = __get_layer(width, layers, target_depth)
     index = top_qubit_index // 2
@@ -415,7 +415,7 @@ def decompose_h(instr: instruction.H) -> Sequence[J]:
     ----
         instr: the Hadamard instruction to decompose.
 
-    Returns:
+    Returns
     -------
         the decomposition as a list.
 
@@ -432,7 +432,7 @@ def decompose_cz(instr: CZ) -> Sequence[instruction.H | instruction.CNOT]:
     ----
         instr: the CZ instruction to decompose.
 
-    Returns:
+    Returns
     -------
         the decomposition.
 
@@ -455,14 +455,18 @@ def decompose_cnot(instr: instruction.CNOT) -> Sequence[instruction.CNOT]:
     qubit_indices = [instr.control, instr.target]
     target_is_lower = bool(qubit_indices.index(min(qubit_indices)))
     if target_is_lower:
-        return [instruction.CNOT(target=instr.target, control=instr.control - 1),
-                instruction.CNOT(target=instr.control - 1, control=instr.control),
-                instruction.CNOT(target=instr.target, control=instr.control - 1),
-                instruction.CNOT(target=instr.control - 1, control=instr.control)]
-    return [instruction.CNOT(target=instr.target - 1, control=instr.control),
-            instruction.CNOT(target=instr.target, control=instr.target - 1),
-            instruction.CNOT(target=instr.target - 1, control=instr.control),
-            instruction.CNOT(target=instr.target, control=instr.target - 1)]
+        return [
+            instruction.CNOT(target=instr.target, control=instr.control - 1),
+            instruction.CNOT(target=instr.control - 1, control=instr.control),
+            instruction.CNOT(target=instr.target, control=instr.control - 1),
+            instruction.CNOT(target=instr.control - 1, control=instr.control),
+        ]
+    return [
+        instruction.CNOT(target=instr.target - 1, control=instr.control),
+        instruction.CNOT(target=instr.target, control=instr.target - 1),
+        instruction.CNOT(target=instr.target - 1, control=instr.control),
+        instruction.CNOT(target=instr.target, control=instr.target - 1),
+    ]
 
 
 def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT | list[J] | None]:  # noqa: C901
@@ -474,33 +478,33 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
     ----
         instr: the instruction to decompose.
 
-    Returns:
+    Returns
     -------
         the decomposition.
 
     """
     # Use == for mypy
-    if instr.kind == InstructionKind.CNOT:  # Checked
+    if instr.kind == InstructionKind.CNOT:
         return instruction_list_to_jcnot(decompose_cnot(instr))
-    if instr.kind == InstructionKind.I:  # Checked
+    if instr.kind == InstructionKind.I:
         return [None]
-    if instr.kind == InstructionKind.H:  # Checked
+    if instr.kind == InstructionKind.H:
         return instruction_list_to_jcnot(decompose_h(instr))
-    if instr.kind == InstructionKind.S:  # Checked
+    if instr.kind == InstructionKind.S:
         return instruction_to_jcnot(instruction.RZ(instr.target, pi / 2))
-    if instr.kind == InstructionKind.X:  # Checked
+    if instr.kind == InstructionKind.X:
         return instruction_to_jcnot(instruction.RX(instr.target, pi))
-    if instr.kind == InstructionKind.Y:  # Checked
+    if instr.kind == InstructionKind.Y:
         return instruction_list_to_jcnot(decompose_y(instr))
-    if instr.kind == InstructionKind.Z:  # Checked
+    if instr.kind == InstructionKind.Z:
         return instruction_to_jcnot(instruction.RZ(instr.target, pi))
-    if instr.kind == InstructionKind.RX:  # Checked
+    if instr.kind == InstructionKind.RX:
         x_decomp: list[J] = list(decompose_rx(instr))
         x_decomp.extend([J(instr.target, 0), J(instr.target, 0)])
         return [x_decomp]
-    if instr.kind == InstructionKind.RY:  # Checked
+    if instr.kind == InstructionKind.RY:
         return [list(decompose_ry(instr))]
-    if instr.kind == InstructionKind.RZ:  # Checked
+    if instr.kind == InstructionKind.RZ:
         z_decomp: list[J] = list(decompose_rz(instr))
         z_decomp.extend([J(instr.target, 0), J(instr.target, 0)])
         return [z_decomp]
@@ -510,10 +514,10 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
         return instruction_list_to_jcnot(decompose_rzz(instr))
     if instr.kind == InstructionKind.SWAP:
         return instruction_list_to_jcnot(decompose_swap(instr))
-    if instr.kind == jcz.JCZInstructionKind.J:  # Checked
+    if instr.kind == JCZInstructionKind.J:
         raise ValueError("J instructions should not be decomposed.")
-    if instr.kind == jcz.JCZInstructionKind.CZ:  # Checked
-        return instruction_list_to_jcnot(decompose_cz(instr))  # pyright: ignore[reportArgumentType]
+    if instr.kind == JCZInstructionKind.CZ:
+        return instruction_list_to_jcnot(decompose_cz(instr))
     raise ValueError(f"Unknown instruction kind: {instr.kind}")
 
 
@@ -524,7 +528,7 @@ def instruction_list_to_jcnot(instrs: Sequence[JCNOTInstruction]) -> Sequence[in
     ----
         instrs: the instruction sequence to decompose.
 
-    Returns:
+    Returns
     -------
         the decomposition.
 
@@ -566,17 +570,6 @@ def transpile_to_layers(circuit: Circuit) -> list[Layer]:
             else:
                 raise ValueError(f"Unexpected instruction: {instr_jcnot}")
     return layers
-
-
-class ConstructionOrder(Enum):
-    """Enumeration of construction orders for building MBQC measurement patterns from a measurement table.
-
-    Values are used by `typer` in the command-line interface.
-    """
-
-    Canonical = "canonical"
-    Deviant = "deviant"
-    DeviantRight = "deviant-right"
 
 
 def nqubits_from_layers(layers: list[Layer]) -> int:
@@ -625,16 +618,14 @@ def layers_to_measurement_table(layers: list[Layer]) -> list[list[Angle]]:
     nqubits: int = nqubits_from_layers(layers)
     table: list[list[Angle]] = []
     for layer_index, layer in enumerate(layers):
-        all_brick_measures = [brick.measures() for brick in layer.bricks]  # Should be a list of two lists of four floats, one for each qubit (top, bottom) in the brick
+        all_brick_measures = [
+            brick.measures() for brick in layer.bricks
+        ]  # Should be a list of two lists of four floats, one for each qubit (top, bottom) in the brick
         for column_index in range(4):
             column: list[Angle] = []
             if layer.is_odd:
                 column.append(0)  # Add zero angle for the half brick
-            column.extend(
-                measures[i][column_index]
-                for measures in all_brick_measures
-                for i in (0, 1)
-            )
+            column.extend(measures[i][column_index] for measures in all_brick_measures for i in (0, 1))
             if layer_index % 2 != nqubits % 2:
                 column.append(0)
             table.append(column)
@@ -665,18 +656,16 @@ def measurement_table_to_pattern(width: int, table: list[list[Angle]]) -> Patter
     for column_index, column in enumerate(table):
         for qubit, angle in enumerate(column):
             pattern.extend(j_commands(nodes[qubit], n_nodes, angle))
-            if (column_index % 4 in {2, 0} and column_index > 0):
+            if column_index % 4 in {2, 0} and column_index > 0:
                 brick_layer = (column_index - 1) // 4
                 if qubit % 2 == brick_layer % 2 and qubit != width - 1:
-                    pattern.add(
-                        E(nodes=(nodes[qubit], nodes[qubit + 1]))
-                    )
+                    pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
             nodes[qubit] = n_nodes
             n_nodes += 1
     return pattern
 
 
-def layers_to_pattern(width: int, layers: list[Layer], order: ConstructionOrder = ConstructionOrder.Canonical) -> Pattern:  # noqa: ARG001
+def layers_to_pattern(width: int, layers: list[Layer]) -> Pattern:
     """Convert layers of bricks into a MBQC measurement pattern.
 
     This is a convenience function that combines `layers_to_measurement_table` and `measurement_table_to_pattern`.
@@ -700,7 +689,7 @@ def layers_to_pattern(width: int, layers: list[Layer], order: ConstructionOrder 
     return measurement_table_to_pattern(width, table)
 
 
-def transpile_brickwork(circuit: Circuit, order: str = "canonical") -> TranspileResult:
+def transpile_brickwork(circuit: Circuit) -> TranspileResult:
     """Transpile the circuit to a brickwork pattern defined in the Universal Blind Quantum Computation.
 
     Parameters
@@ -722,16 +711,6 @@ def transpile_brickwork(circuit: Circuit, order: str = "canonical") -> Transpile
 
     """
     n_node = circuit.width
-    order_as_object = ConstructionOrder.Canonical
-    if order == "canonical":
-        pass
-    elif order == "deviant":
-        order_as_object = ConstructionOrder.Deviant
-    elif order == "deviant-right":
-        order_as_object = ConstructionOrder.DeviantRight
-    else:
-        msg = f"Unknown construction order: {order}. Available orders are 'canonical', 'deviant' and 'deviant-right'."
-        raise ValueError(msg)
-    pattern = layers_to_pattern(n_node, transpile_to_layers(circuit), order_as_object)
+    pattern = layers_to_pattern(n_node, transpile_to_layers(circuit))
     classical_outputs: list[int] = []
     return TranspileResult(pattern, tuple(classical_outputs))

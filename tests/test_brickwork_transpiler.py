@@ -127,32 +127,6 @@ class TestBrickworkTranspilerUnitGates:
         assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
 
     @staticmethod
-    def test_multi_gate_deviant(fx_rng: Generator) -> None:
-        """Test with construction folling the deviant pattern."""
-        circuit = Circuit(4)
-        circuit.cnot(0, 1)
-        circuit.rx(0, np.pi / 4)
-        circuit.rz(1, np.pi / 2)
-        circuit.cnot(1, 2)
-        pattern = transpile_brickwork(circuit, order="deviant").pattern
-        state = circuit.simulate_statevector().statevec
-        state_mbqc = pattern.simulate_pattern(rng=fx_rng)
-        assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
-
-    @staticmethod
-    def test_multi_gate_deviant_right(fx_rng: Generator) -> None:
-        """Test with construction folling the deviant right pattern."""
-        circuit = Circuit(4)
-        circuit.cnot(0, 1)
-        circuit.rx(0, np.pi / 4)
-        circuit.rz(1, np.pi / 2)
-        circuit.cnot(1, 2)
-        pattern = transpile_brickwork(circuit, order="deviant-right").pattern
-        state = circuit.simulate_statevector().statevec
-        state_mbqc = pattern.simulate_pattern(rng=fx_rng)
-        assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
-
-    @staticmethod
     def test_cnot_nonlocal() -> None:
         """Check error for nonlocal CNOTs."""
         circuit = Circuit(3)
