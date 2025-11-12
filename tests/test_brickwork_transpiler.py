@@ -57,8 +57,8 @@ def test_circuit_simulation(circuit: Circuit, fx_rng: Generator) -> None:
     pattern_brickwork = transpile_brickwork(circuit).pattern
     state_original = circuit.simulate_statevector().statevec
     state_brickwork = pattern_brickwork.simulate_pattern(rng=fx_rng)
-    dmatrix = DensityMatrix(state_original)
-    dmatrix_brickwork = DensityMatrix(data=state_brickwork)
+    dmatrix = state_original
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork)  # type: ignore  # noqa: PGH003
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
         assert dmatrix.nqubit == dmatrix_brickwork.nqubit - 1
         dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)
@@ -76,8 +76,8 @@ def test_circuit_simulation_minimized(circuit: Circuit, fx_rng: Generator) -> No
     pattern_original.shift_signals()
     state_original = pattern_original.simulate_pattern(rng=fx_rng)
     state_brickwork = pattern_brickwork.simulate_pattern(rng=fx_rng)
-    dmatrix = DensityMatrix(state_original)
-    dmatrix_brickwork = DensityMatrix(data=state_brickwork)
+    dmatrix = DensityMatrix(state_original)  # type: ignore  # noqa: PGH003
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork)  # type: ignore  # noqa: PGH003
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
         dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)
     assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)
