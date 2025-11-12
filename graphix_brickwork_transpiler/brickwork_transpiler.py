@@ -420,12 +420,7 @@ def decompose_i(instr: instruction.I) -> list[J]:
         the decomposition as a list.
 
     """
-    return [
-        J(instr.target, 0),
-        J(instr.target, 0),
-        J(instr.target, 0),
-        J(instr.target, 0)
-    ]
+    return [J(instr.target, 0), J(instr.target, 0), J(instr.target, 0), J(instr.target, 0)]
 
 
 def decompose_h(instr: instruction.H) -> list[J]:
@@ -442,12 +437,7 @@ def decompose_h(instr: instruction.H) -> list[J]:
         the decomposition as a list.
 
     """
-    return [
-        J(instr.target, pi / 2),
-        J(instr.target, pi / 2),
-        J(instr.target, pi / 2),
-        J(instr.target, 0)
-    ]
+    return [J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, 0)]
 
 
 def decompose_cz(instr: CZ) -> Sequence[instruction.H | instruction.CNOT]:
@@ -687,7 +677,7 @@ def measurement_table_to_pattern(width: int, table: list[list[Angle]]) -> Patter
     brickwork_width = width
     n_nodes = width
     if width != len(table[0]):  # Add extra width nodes in the brickwork design that are not input nodes in the circuit
-        assert width == len(table[0]) - 1
+        assert width == len(table[0]) - 1  # noqa: S101
         nodes.append(n_nodes)
         brickwork_width += 1
         n_nodes += 1

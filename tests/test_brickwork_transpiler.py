@@ -135,16 +135,11 @@ class TestBrickworkTranspilerUnitGates:
     def test_cz() -> None:
         """Test passing CZ instruction to transpiler."""
         instr_list = instruction_to_jcnot(CZ((0, 1)))
-        comparison_list = [[J(0, pi / 2),
-                            J(0, pi / 2),
-                            J(0, pi / 2),
-                            J(0, 0)],
-                            instruction.CNOT(control=1, target=0),
-                            [J(0, pi / 2),
-                            J(0, pi / 2),
-                            J(0, pi / 2),
-                            J(0, 0)],
-                            ]
+        comparison_list = [
+            [J(0, pi / 2), J(0, pi / 2), J(0, pi / 2), J(0, 0)],
+            instruction.CNOT(control=1, target=0),
+            [J(0, pi / 2), J(0, pi / 2), J(0, pi / 2), J(0, 0)],
+        ]
         assert instr_list == comparison_list
 
     @staticmethod
