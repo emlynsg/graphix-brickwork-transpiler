@@ -408,7 +408,27 @@ def __insert_cnot(
     depth[bottom_qubit_index] = target_depth + 1
 
 
-def decompose_h(instr: instruction.H) -> Sequence[J]:
+def decompose_i(instr: instruction.I) -> list[J]:
+    """Return a decomposition of the Identity gate for the brickwork as null rotations.
+
+    Args:
+    ----
+        instr: the identity instruction to decompose.
+
+    Returns
+    -------
+        the decomposition as a list.
+
+    """
+    return [
+        J(instr.target, 0),
+        J(instr.target, 0),
+        J(instr.target, 0),
+        J(instr.target, 0)
+    ]
+
+
+def decompose_h(instr: instruction.H) -> list[J]:
     """Return a decomposition of the Hadamard gate for the brickwork as 3 rotations.
 
     Broadbent et al. (2009) decomposition of the Hadamard gate in the brickwork.
@@ -476,7 +496,7 @@ def decompose_cnot(instr: instruction.CNOT) -> Sequence[instruction.CNOT]:
     ]
 
 
-def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT | list[J] | None]:  # noqa: C901
+def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT | list[J] | None]:  # noqa: C901, PLR0912
     """Return a decomposition of the instruction.
 
     Instructions are purposefully extended to sets of 4, to isolate each operation to a single brick or sequence of complete bricks.
@@ -492,11 +512,13 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
     """
     # Use == for mypy
     if instr.kind == InstructionKind.CNOT:
+        if _cnot_is_local(instr):
+            return [instr]
         return instruction_list_to_jcnot(decompose_cnot(instr))
     if instr.kind == InstructionKind.I:
-        return [None]
+        return [decompose_i(instr)]
     if instr.kind == InstructionKind.H:
-        return [list(decompose_h(instr))]
+        return [decompose_h(instr)]
     if instr.kind == InstructionKind.S:
         return instruction_to_jcnot(instruction.RZ(instr.target, pi / 2))
     if instr.kind == InstructionKind.X:
@@ -525,6 +547,8 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
         raise ValueError("J instructions should not be decomposed.")
     if instr.kind == JCZInstructionKind.CZ:
         return instruction_list_to_jcnot(decompose_cz(instr))
+    if instr.kind in {InstructionKind._XC, InstructionKind._ZC}:
+        raise ValueError("X and Z correction instructions should not be decomposed.")
     raise ValueError(f"Unknown instruction kind: {instr.kind}")
 
 
@@ -561,8 +585,10 @@ def transpile_to_layers(circuit: Circuit) -> list[Layer]:
     depth = [0 for _ in range(circuit.width)]
     for instr in circuit.instruction:
         # Use of `if` instead of `match` here for mypy
-        if instr.kind == InstructionKind._XC or instr.kind == InstructionKind._ZC or instr.kind == InstructionKind.M:  # noqa: PLR1714
+        if instr.kind == InstructionKind._XC or instr.kind == InstructionKind._ZC:  # noqa: PLR1714
             raise ValueError(f"Unsupported instruction: {instr}")
+        if instr.kind == InstructionKind.M:
+            raise ValueError("M instructions should not be transpiled in brickwork form.")
         for instr_jcnot in instruction_to_jcnot(instr):
             if instr_jcnot is None:  # Checking for identity operations
                 continue
@@ -658,17 +684,26 @@ def measurement_table_to_pattern(width: int, table: list[list[Angle]]) -> Patter
 
     """
     nodes = list(range(width))
+    brickwork_width = width
     n_nodes = width
+    if width != len(table[0]):  # Add extra width nodes in the brickwork design that are not input nodes in the circuit
+        assert width == len(table[0]) - 1
+        nodes.append(n_nodes)
+        brickwork_width += 1
+        n_nodes += 1
     pattern = Pattern(input_nodes=nodes)  # Initialise with input nodes
     for column_index, column in enumerate(table):
         for qubit, angle in enumerate(column):
-            pattern.extend(j_commands(nodes[qubit], n_nodes, angle))
             if column_index % 4 in {2, 0} and column_index > 0:
                 brick_layer = (column_index - 1) // 4
-                if qubit % 2 == brick_layer % 2 and qubit != width - 1:
+                if qubit % 2 == brick_layer % 2 and qubit != brickwork_width - 1:
                     pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
+            pattern.extend(j_commands(nodes[qubit], nodes[qubit] + brickwork_width, -angle))
             nodes[qubit] = n_nodes
             n_nodes += 1
+    last_brick_layer = (len(table) - 1) // 4
+    for qubit in range(last_brick_layer % 2, brickwork_width - 1, 2):
+        pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
     return pattern
 
 

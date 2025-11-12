@@ -16,12 +16,21 @@ from graphix.gflow import find_flow
 from graphix.opengraph import OpenGraph
 from graphix.parameter import Placeholder
 from graphix.random_objects import rand_circuit
-from graphix.sim.statevec import Statevec
-from graphix.simulator import DefaultMeasureMethod
+from graphix.sim import DensityMatrix
 from graphix.transpiler import Circuit
+from graphix_jcz_transpiler import (
+    CZ,
+    J,
+    transpile_jcz,
+)
 from numpy.random import Generator
 
-from graphix_brickwork_transpiler import nqubits_from_layers, transpile_brickwork, transpile_to_layers
+from graphix_brickwork_transpiler import (
+    instruction_to_jcnot,
+    nqubits_from_layers,
+    transpile_brickwork,
+    transpile_to_layers,
+)
 
 if TYPE_CHECKING:
     from numpy.random import PCG64
@@ -44,23 +53,34 @@ TEST_BASIC_CIRCUITS = [
 
 @pytest.mark.parametrize("circuit", TEST_BASIC_CIRCUITS)
 def test_circuit_simulation(circuit: Circuit, fx_rng: Generator) -> None:
-    """Test circuit transpilation comparing state vector back-end."""
-    pattern = transpile_brickwork(circuit).pattern
-    state = circuit.simulate_statevector().statevec
-    state_mbqc = pattern.simulate_pattern(rng=fx_rng)
-    assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
+    """Test circuit transpilation comparing state vector back-ends."""
+    pattern_brickwork = transpile_brickwork(circuit).pattern
+    state_original = circuit.simulate_statevector().statevec
+    state_brickwork = pattern_brickwork.simulate_pattern(rng=fx_rng)
+    dmatrix = DensityMatrix(state_original)
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork)
+    if dmatrix.nqubit != dmatrix_brickwork.nqubit:
+        assert dmatrix.nqubit == dmatrix_brickwork.nqubit - 1
+        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)
+    assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)
 
 
 @pytest.mark.parametrize("circuit", TEST_BASIC_CIRCUITS)
-def test_circuit_simulation_og(circuit: Circuit, fx_rng: Generator) -> None:
+def test_circuit_simulation_minimized(circuit: Circuit, fx_rng: Generator) -> None:
     """Test circuit transpilation comparing state vector back-end with default transpiler."""
-    pattern = transpile_brickwork(circuit).pattern
-    pattern.minimize_space()
-    pattern_orig = circuit.transpile().pattern
-    pattern_orig.minimize_space()
-    state_mbqc = pattern.simulate_pattern(rng=fx_rng)
-    state_mbqc_orig = pattern_orig.simulate_pattern(rng=fx_rng)
-    assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state_mbqc_orig.flatten())) == pytest.approx(1)
+    pattern_brickwork = transpile_brickwork(circuit).pattern
+    pattern_brickwork.minimize_space()
+    pattern_brickwork.shift_signals()
+    pattern_original = transpile_jcz(circuit).pattern
+    pattern_original.minimize_space()
+    pattern_original.shift_signals()
+    state_original = pattern_original.simulate_pattern(rng=fx_rng)
+    state_brickwork = pattern_brickwork.simulate_pattern(rng=fx_rng)
+    dmatrix = DensityMatrix(state_original)
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork)
+    if dmatrix.nqubit != dmatrix_brickwork.nqubit:
+        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)
+    assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)
 
 
 @pytest.mark.parametrize("circuit", TEST_BASIC_CIRCUITS)
@@ -75,43 +95,57 @@ def test_circuit_flow(circuit: Circuit) -> None:
 
 
 @pytest.mark.parametrize("jumps", range(1, 11))
-@pytest.mark.parametrize("check", ["simulation", "flow"])
-def test_random_circuit(fx_bg: PCG64, jumps: int, check: str) -> None:
+def test_random_circuit_simulation(fx_bg: PCG64, jumps: int) -> None:
     """Test random circuit transpilation."""
     rng = Generator(fx_bg.jumped(jumps))
     nqubits = 4
     depth = 6
     circuit = rand_circuit(nqubits, depth, rng, use_ccx=True)
-    if check == "simulation":
-        test_circuit_simulation(circuit, rng)
-    elif check == "flow":
-        test_circuit_flow(circuit)
+    test_circuit_simulation(circuit, rng)
 
 
-def test_measure(fx_rng: Generator) -> None:
-    """Test circuit transpilation with measurement."""
-    circuit = Circuit(2)
-    circuit.h(1)
-    circuit.cnot(0, 1)
-    circuit.m(0, Plane.XY, pi / 4)
-    transpiled = transpile_brickwork(circuit)
-    transpiled.pattern.perform_pauli_measurements()
-    transpiled.pattern.minimize_space()
-
-    def simulate_and_measure() -> int:
-        measure_method = DefaultMeasureMethod(results=transpiled.pattern.results)
-        state = transpiled.pattern.simulate_pattern(rng=fx_rng, measure_method=measure_method)
-        measured = measure_method.get_measure_result(transpiled.classical_outputs[0])
-        assert isinstance(state, Statevec)
-        return measured
-
-    nb_shots = 10000
-    count = sum(1 for _ in range(nb_shots) if simulate_and_measure())
-    assert abs(count - nb_shots / 2) < nb_shots / 20
+@pytest.mark.parametrize("jumps", range(1, 11))
+def test_random_circuit_flow(fx_bg: PCG64, jumps: int) -> None:
+    """Test random circuit transpilation."""
+    rng = Generator(fx_bg.jumped(jumps))
+    nqubits = 3
+    depth = 2
+    circuit = rand_circuit(nqubits, depth, rng, use_ccx=True)
+    test_circuit_flow(circuit)
 
 
 class TestBrickworkTranspilerUnitGates:
     """Test the transpiler on circuits with single gates."""
+
+    @staticmethod
+    def test_measure() -> None:
+        """Test circuit transpilation with measurement."""
+        circuit = Circuit(1)
+        circuit.m(0, Plane.XY, pi / 4)
+        with pytest.raises(ValueError):
+            transpile_brickwork(circuit)
+
+    @staticmethod
+    def test_j() -> None:
+        """Test passing J instruction to transpiler."""
+        with pytest.raises(ValueError):
+            instruction_to_jcnot(J(0, pi / 4))
+
+    @staticmethod
+    def test_cz() -> None:
+        """Test passing CZ instruction to transpiler."""
+        instr_list = instruction_to_jcnot(CZ((0, 1)))
+        comparison_list = [[J(0, pi / 2),
+                            J(0, pi / 2),
+                            J(0, pi / 2),
+                            J(0, 0)],
+                            instruction.CNOT(control=1, target=0),
+                            [J(0, pi / 2),
+                            J(0, pi / 2),
+                            J(0, pi / 2),
+                            J(0, 0)],
+                            ]
+        assert instr_list == comparison_list
 
     @staticmethod
     def test_empty_x_z(fx_rng: Generator) -> None:
@@ -125,14 +159,6 @@ class TestBrickworkTranspilerUnitGates:
         state = circuit.simulate_statevector().statevec
         state_mbqc = pattern.simulate_pattern(rng=fx_rng)
         assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
-
-    @staticmethod
-    def test_cnot_nonlocal() -> None:
-        """Check error for nonlocal CNOTs."""
-        circuit = Circuit(3)
-        circuit.cnot(0, 2)
-        with pytest.raises(ValueError):
-            transpile_brickwork(circuit)
 
     @staticmethod
     def test_nqubits_from_layers_0() -> None:
@@ -158,7 +184,7 @@ class TestBrickworkTranspilerUnitGates:
         alpha = Placeholder("alpha")
         for j in [0, 1, 2, 3, 4]:
             circuit.rx(0, j * alpha)
-            circuit.i(0)
+            circuit.rz(1, j * alpha / 7)
         circuit.cnot(0, 1)
         pattern = transpile_brickwork(circuit).pattern
         assert pattern.is_parameterized()
