@@ -61,7 +61,7 @@ def test_circuit_simulation(circuit: Circuit, fx_rng: Generator) -> None:
     dmatrix_brickwork = DensityMatrix(data=state_brickwork)  # type: ignore  # noqa: PGH003
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
         assert dmatrix.nqubit == dmatrix_brickwork.nqubit - 1
-        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)
+        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)  # Traces out unused output qubit
     assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)
 
 
@@ -79,7 +79,7 @@ def test_circuit_simulation_minimized(circuit: Circuit, fx_rng: Generator) -> No
     dmatrix = DensityMatrix(state_original)  # type: ignore  # noqa: PGH003
     dmatrix_brickwork = DensityMatrix(data=state_brickwork)  # type: ignore  # noqa: PGH003
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
-        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)
+        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)  # Traces out unused output qubit
     assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)
 
 
@@ -114,7 +114,15 @@ def test_random_circuit_flow(fx_bg: PCG64, jumps: int) -> None:
     test_circuit_flow(circuit)
 
 
-class TestBrickworkTranspilerUnitGates:
+@pytest.mark.parametrize("jumps", range(1, 11))
+def test_y_simulation(fx_bg: PCG64, jumps: int) -> None:
+    """Test Y brickwork."""
+    rng = Generator(fx_bg.jumped(jumps))
+    circuit = Circuit(3, instr=[instruction.RY(0, pi / 11), instruction.RX(1, pi / 5), instruction.RZ(1, pi / 7), instruction.RY(2, pi / 11)])
+    test_circuit_simulation(circuit, rng)
+
+
+class TestBrickworkTranspilerSpecific:
     """Test the transpiler on circuits with single gates."""
 
     @staticmethod
@@ -171,6 +179,10 @@ class TestBrickworkTranspilerUnitGates:
             layers = transpile_to_layers(circuit)
             assert nqubits_from_layers(layers) == i
 
+
+class TestBrickworkTranspilerParametrized:
+    """Test the transpiler on parametrized circuits."""
+
     @staticmethod
     def test_parametrized_circuit(fx_rng: Generator) -> None:
         """Test with parametrized circuit."""
@@ -188,3 +200,4 @@ class TestBrickworkTranspilerUnitGates:
         state = circuit0.simulate_statevector().statevec
         state_mbqc = pattern0.simulate_pattern(rng=fx_rng)
         assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
+
