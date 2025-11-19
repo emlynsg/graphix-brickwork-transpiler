@@ -118,7 +118,15 @@ def test_random_circuit_flow(fx_bg: PCG64, jumps: int) -> None:
 def test_y_simulation(fx_bg: PCG64, jumps: int) -> None:
     """Test Y brickwork."""
     rng = Generator(fx_bg.jumped(jumps))
-    circuit = Circuit(3, instr=[instruction.RY(0, pi / 11), instruction.RX(1, pi / 5), instruction.RZ(1, pi / 7), instruction.RY(2, pi / 11)])
+    circuit = Circuit(
+        3,
+        instr=[
+            instruction.RY(0, pi / 11),
+            instruction.RX(1, pi / 5),
+            instruction.RZ(1, pi / 7),
+            instruction.RY(2, pi / 11),
+        ],
+    )
     test_circuit_simulation(circuit, rng)
 
 

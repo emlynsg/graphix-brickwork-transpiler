@@ -29,6 +29,7 @@ from graphix_jcz_transpiler import (
     decompose_y,
     j_commands,
 )
+from typing_extensions import assert_never
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -486,7 +487,7 @@ def decompose_cnot(instr: instruction.CNOT) -> Sequence[instruction.CNOT]:
     ]
 
 
-def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT | list[J] | None]:  # noqa: C901, PLR0912
+def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT | list[J]]:  # noqa: C901, PLR0912
     """Return a decomposition of the instruction.
 
     Instructions are purposefully extended to sets of 4, to isolate each operation to a single brick or sequence of complete bricks.
@@ -539,10 +540,10 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
         return instruction_list_to_jcnot(decompose_cz(instr))
     if instr.kind in {InstructionKind._XC, InstructionKind._ZC}:
         raise ValueError("X and Z correction instructions should not be decomposed.")
-    raise ValueError(f"Unknown instruction kind: {instr.kind}")
+    assert_never(instr.kind)
 
 
-def instruction_list_to_jcnot(instrs: Sequence[JCNOTInstruction]) -> Sequence[instruction.CNOT | list[J] | None]:
+def instruction_list_to_jcnot(instrs: Sequence[JCNOTInstruction]) -> Sequence[instruction.CNOT | list[J]]:
     """Return a J-∧z decomposition of the sequence of instructions.
 
     Args:
