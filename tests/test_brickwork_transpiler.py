@@ -200,4 +200,3 @@ class TestBrickworkTranspilerParametrized:
         state = circuit0.simulate_statevector().statevec
         state_mbqc = pattern0.simulate_pattern(rng=fx_rng)
         assert np.abs(np.dot(state_mbqc.flatten().conjugate(), state.flatten())) == pytest.approx(1)
-
