@@ -1,2 +1,2 @@
 graphix
-graphix_jcz_transpiler @ git+https://github.com/emlynsg/graphix-jcz-transpiler@main
+graphix_jcz_transpiler @ git+https://github.com/qat-inria/graphix-jcz-transpiler@main
