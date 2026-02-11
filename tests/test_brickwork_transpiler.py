@@ -70,7 +70,7 @@ def test_circuit_simulation(circuit: Circuit, fx_rng: Generator) -> None:
     state_original = circuit.simulate_statevector(branch_selector=bs).statevec
     state_brickwork = pattern_brickwork.simulate_pattern(backend="tensornetwork", rng=fx_rng, branch_selector=bs)
     dmatrix = DensityMatrix(state_original)
-    dmatrix_brickwork = DensityMatrix(data=state_brickwork.to_statevector())  # type: ignore  # noqa: PGH003
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork.to_statevector())
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
         assert dmatrix.nqubit == dmatrix_brickwork.nqubit - 1
         dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)  # Traces out unused output qubit
@@ -90,8 +90,8 @@ def test_circuit_simulation_pp(circuit: Circuit, fx_rng: Generator) -> None:
     pattern_original.standardize()
     state_original = pattern_original.simulate_pattern(rng=fx_rng)
     state_brickwork = pattern_brickwork.simulate_pattern(rng=fx_rng)
-    dmatrix = DensityMatrix(state_original)  # type: ignore  # noqa: PGH003
-    dmatrix_brickwork = DensityMatrix(data=state_brickwork)  # type: ignore  # noqa: PGH003
+    dmatrix = DensityMatrix(state_original)
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork)
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
         dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)  # Traces out unused output qubit
     assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)
@@ -232,10 +232,10 @@ def test_circuit_simulation_cf(circuit: Circuit, fx_rng: Generator) -> None:
     state_original = circuit.simulate_statevector().statevec
     state_brickwork = pattern_brickwork.simulate_pattern(backend="tensornetwork", rng=fx_rng, branch_selector=bs)
     dmatrix = DensityMatrix(state_original)
-    dmatrix_brickwork = DensityMatrix(data=state_brickwork.to_statevector())  # type: ignore  # noqa: PGH003
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork.to_statevector())
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
         assert dmatrix.nqubit == dmatrix_brickwork.nqubit - 1
-        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)  # Traces out unused output qubit
+        dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)
     assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)
 
 
@@ -252,8 +252,8 @@ def test_circuit_simulation_pp_cf(circuit: Circuit, fx_rng: Generator) -> None:
     pattern_original.standardize()
     state_original = pattern_original.simulate_pattern(rng=fx_rng)
     state_brickwork = pattern_brickwork.simulate_pattern(rng=fx_rng)
-    dmatrix = DensityMatrix(state_original)  # type: ignore  # noqa: PGH003
-    dmatrix_brickwork = DensityMatrix(data=state_brickwork)  # type: ignore  # noqa: PGH003
+    dmatrix = DensityMatrix(state_original)
+    dmatrix_brickwork = DensityMatrix(data=state_brickwork)
     if dmatrix.nqubit != dmatrix_brickwork.nqubit:
         dmatrix_brickwork.ptrace(dmatrix_brickwork.nqubit - 1)  # Traces out unused output qubit
     assert np.abs(np.dot(dmatrix_brickwork.flatten().conjugate(), dmatrix.flatten())) == pytest.approx(1)

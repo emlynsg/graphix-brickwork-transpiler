@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias, override
 
 import networkx as nx
 from graphix import Pattern, instruction
@@ -16,7 +16,7 @@ from graphix.flow.core import (
     CausalFlow,
     _corrections_to_partial_order_layers,  # noqa: PLC2701
 )
-from graphix.fundamentals import ANGLE_PI, Angle, ParameterizedAngle, Plane
+from graphix.fundamentals import ANGLE_PI, ParameterizedAngle, Plane
 from graphix.instruction import InstructionKind
 from graphix.measurements import Measurement
 from graphix.opengraph import OpenGraph
@@ -108,7 +108,8 @@ class CNOTBrick(Brick):
     target_above: bool
     is_filled: bool = True
 
-    def measures(self) -> list[list[Angle]]:
+    @override
+    def measures(self) -> list[list[ParameterizedAngle]]:
         """Return the measurement angles for the CNOT gate.
 
         Returns
