@@ -62,4 +62,5 @@ addopts = ["--ignore=examples", "--ignore=docs"]
 exclude = ["examples"]
 ignore_missing_imports = true
 follow_untyped_imports = true
+disallow_untyped_decorators = false 
 strict = true

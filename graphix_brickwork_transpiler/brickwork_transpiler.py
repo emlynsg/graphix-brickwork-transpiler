@@ -7,17 +7,22 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from math import pi
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias, override
 
-import numpy as np
+import networkx as nx
 from graphix import Pattern, instruction
 from graphix.command import E
+from graphix.flow.core import (
+    CausalFlow,
+    _corrections_to_partial_order_layers,  # noqa: PLC2701
+)
+from graphix.fundamentals import ANGLE_PI, ParameterizedAngle, Plane
 from graphix.instruction import InstructionKind
-from graphix.parameter import ExpressionOrFloat
+from graphix.measurements import Measurement
+from graphix.opengraph import OpenGraph
 from graphix.transpiler import Circuit, TranspileResult
-from graphix_jcz_transpiler import (
-    CZ,
+from graphix_jcz_transpiler.jcz_transpiler import (
+    IllformedCircuitError,
     J,
     JCZInstructionKind,
     decompose_ccx,
@@ -33,17 +38,16 @@ from typing_extensions import assert_never
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from collections.abc import Set as AbstractSet
 
     from graphix.transpiler import Circuit
 
 # TODO @emlynsg: Create function to trim zero bricks from the start and end  # noqa: FIX002, TD003
-# TODO @emlynsg: simplifcation to remove consecutive J(0) in decomposition  # noqa: FIX002, TD003
-
-Angle: TypeAlias = ExpressionOrFloat
+# TODO @emlynsg: simplification to remove consecutive J(0) in decomposition  # noqa: FIX002, TD003
 
 JCNOTInstruction: TypeAlias = (
     J
-    | CZ
+    | instruction.CZ
     | instruction.CNOT
     | instruction.RZZ
     | instruction.SWAP
@@ -80,7 +84,7 @@ class Brick(ABC):
         self.is_filled: bool = False
 
     @abstractmethod
-    def measures(self) -> list[list[Angle]]: ...  # noqa: D102
+    def measures(self) -> list[list[ParameterizedAngle]]: ...  # noqa: D102
 
     """Returns the measurement angles for the brick. The sublists correspond to the top and bottom qubits in the brick."""
 
@@ -104,7 +108,8 @@ class CNOTBrick(Brick):
     target_above: bool
     is_filled: bool = True
 
-    def measures(self) -> list[list[Angle]]:
+    @override
+    def measures(self) -> list[list[ParameterizedAngle]]:
         """Return the measurement angles for the CNOT gate.
 
         Returns
@@ -114,8 +119,8 @@ class CNOTBrick(Brick):
 
         """
         if self.target_above:
-            return [[0, np.pi / 2, 0, -np.pi / 2], [0, 0, np.pi / 2, 0]]
-        return [[0, 0, np.pi / 2, 0], [0, np.pi / 2, 0, -np.pi / 2]]
+            return [[0, ANGLE_PI / 2, 0, -ANGLE_PI / 2], [0, 0, ANGLE_PI / 2, 0]]
+        return [[0, 0, ANGLE_PI / 2, 0], [0, ANGLE_PI / 2, 0, -ANGLE_PI / 2]]
 
 
 @dataclass
@@ -142,13 +147,13 @@ class SingleQubit:
 
     is_filled: bool = False
 
-    def __init__(self, angles: list[Angle] | None = None) -> None:
+    def __init__(self, angles: list[ParameterizedAngle] | None = None) -> None:
         """Initialize the SingleQubit object with the specified angles of J operations, or as the identity."""
         if angles is None:
             angles = [0.0, 0.0, 0.0, 0.0]
         self.angles = angles
 
-    def measures(self) -> list[Angle]:
+    def measures(self) -> list[ParameterizedAngle]:
         """Return the measurement angles for the single-qubit gate.
 
         Returns
@@ -218,7 +223,7 @@ class SingleQubitPairBrick(Brick):
             return self.bottom
         return self.top
 
-    def measures(self) -> list[list[Angle]]:
+    def measures(self) -> list[list[ParameterizedAngle]]:
         """Return the measurement angles for both single-qubits in the brick.
 
         Returns
@@ -421,7 +426,12 @@ def decompose_i(instr: instruction.I) -> list[J]:
         the decomposition as a list.
 
     """
-    return [J(instr.target, 0), J(instr.target, 0), J(instr.target, 0), J(instr.target, 0)]
+    return [
+        J(instr.target, 0),
+        J(instr.target, 0),
+        J(instr.target, 0),
+        J(instr.target, 0),
+    ]
 
 
 def decompose_h(instr: instruction.H) -> list[J]:
@@ -438,10 +448,15 @@ def decompose_h(instr: instruction.H) -> list[J]:
         the decomposition as a list.
 
     """
-    return [J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, pi / 2), J(instr.target, 0)]
+    return [
+        J(instr.target, ANGLE_PI / 2),
+        J(instr.target, ANGLE_PI / 2),
+        J(instr.target, ANGLE_PI / 2),
+        J(instr.target, 0),
+    ]
 
 
-def decompose_cz(instr: CZ) -> Sequence[instruction.H | instruction.CNOT]:
+def decompose_cz(instr: instruction.CZ) -> Sequence[instruction.H | instruction.CNOT]:
     """Return a decomposition of the CNOT gate as H·∧x·H.
 
     Based on the common CNOT decomposition H·∧z·H.
@@ -511,13 +526,13 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
     if instr.kind == InstructionKind.H:
         return [decompose_h(instr)]
     if instr.kind == InstructionKind.S:
-        return instruction_to_jcnot(instruction.RZ(instr.target, pi / 2))
+        return instruction_to_jcnot(instruction.RZ(instr.target, ANGLE_PI / 2))
     if instr.kind == InstructionKind.X:
-        return instruction_to_jcnot(instruction.RX(instr.target, pi))
+        return instruction_to_jcnot(instruction.RX(instr.target, ANGLE_PI))
     if instr.kind == InstructionKind.Y:
         return instruction_list_to_jcnot(decompose_y(instr))
     if instr.kind == InstructionKind.Z:
-        return instruction_to_jcnot(instruction.RZ(instr.target, pi))
+        return instruction_to_jcnot(instruction.RZ(instr.target, ANGLE_PI))
     if instr.kind == InstructionKind.RX:
         x_decomp: list[J] = list(decompose_rx(instr))
         x_decomp.extend([J(instr.target, 0), J(instr.target, 0)])
@@ -534,16 +549,16 @@ def instruction_to_jcnot(instr: JCNOTInstruction) -> Sequence[instruction.CNOT |
         return instruction_list_to_jcnot(decompose_rzz(instr))
     if instr.kind == InstructionKind.SWAP:
         return instruction_list_to_jcnot(decompose_swap(instr))
+    if instr.kind == InstructionKind.CZ:
+        return instruction_list_to_jcnot(decompose_cz(instr))
     if instr.kind == JCZInstructionKind.J:
         raise ValueError("J instructions should not be decomposed.")
-    if instr.kind == JCZInstructionKind.CZ:
-        return instruction_list_to_jcnot(decompose_cz(instr))
-    if instr.kind in {InstructionKind._XC, InstructionKind._ZC}:
-        raise ValueError("X and Z correction instructions should not be decomposed.")
     assert_never(instr.kind)
 
 
-def instruction_list_to_jcnot(instrs: Sequence[JCNOTInstruction]) -> Sequence[instruction.CNOT | list[J]]:
+def instruction_list_to_jcnot(
+    instrs: Sequence[JCNOTInstruction],
+) -> Sequence[instruction.CNOT | list[J]]:
     """Return a J-∧z decomposition of the sequence of instructions.
 
     Args:
@@ -576,10 +591,8 @@ def transpile_to_layers(circuit: Circuit) -> list[Layer]:
     depth = [0 for _ in range(circuit.width)]
     for instr in circuit.instruction:
         # Use of `if` instead of `match` here for mypy
-        if instr.kind == InstructionKind._XC or instr.kind == InstructionKind._ZC:  # noqa: PLR1714
-            raise ValueError(f"Unsupported instruction: {instr}")
         if instr.kind == InstructionKind.M:
-            raise ValueError("M instructions should not be transpiled in brickwork form.")
+            raise ValueError("Brickwork transpilation does not support measurement instructions.")
         for instr_jcnot in instruction_to_jcnot(instr):
             if instr_jcnot is None:  # Checking for identity operations
                 continue
@@ -624,7 +637,7 @@ def nqubits_from_layers(layers: list[Layer]) -> int:
     return even_brick_count * 2 + int(even_brick_count == odd_brick_count)
 
 
-def layers_to_measurement_table(layers: list[Layer]) -> list[list[Angle]]:
+def layers_to_measurement_table(layers: list[Layer]) -> list[list[ParameterizedAngle]]:
     """Convert layers of bricks into a measurement table.
 
     Goes left to right in measurement order, .
@@ -640,13 +653,13 @@ def layers_to_measurement_table(layers: list[Layer]) -> list[list[Angle]]:
 
     """
     nqubits: int = nqubits_from_layers(layers)
-    table: list[list[Angle]] = []
+    table: list[list[ParameterizedAngle]] = []
     for layer_index, layer in enumerate(layers):
         all_brick_measures = [
             brick.measures() for brick in layer.bricks
         ]  # Should be a list of two lists of four floats, one for each qubit (top, bottom) in the brick
         for column_index in range(4):
-            column: list[Angle] = []
+            column: list[ParameterizedAngle] = []
             if layer.is_odd:
                 column.append(0)  # Add zero angle for the half brick
             column.extend(measures[i][column_index] for measures in all_brick_measures for i in (0, 1))
@@ -656,7 +669,7 @@ def layers_to_measurement_table(layers: list[Layer]) -> list[list[Angle]]:
     return table
 
 
-def measurement_table_to_pattern(width: int, table: list[list[Angle]]) -> Pattern:
+def measurement_table_to_pattern(width: int, table: list[list[ParameterizedAngle]]) -> Pattern:
     """Convert a measurement table into a MBQC measurement pattern.
 
     This function constructs the measurement pattern.
@@ -674,27 +687,27 @@ def measurement_table_to_pattern(width: int, table: list[list[Angle]]) -> Patter
         the resulting MBQC measurement pattern
 
     """
-    nodes = list(range(width))
+    indices = list(range(width))
     brickwork_width = width
     n_nodes = width
     if width != len(table[0]):  # Add extra width nodes in the brickwork design that are not input nodes in the circuit
         assert width == len(table[0]) - 1  # noqa: S101
-        nodes.append(n_nodes)
+        indices.append(n_nodes)
         brickwork_width += 1
         n_nodes += 1
-    pattern = Pattern(input_nodes=nodes)  # Initialise with input nodes
+    pattern = Pattern(input_nodes=indices)  # Initialise with input nodes
     for column_index, column in enumerate(table):
         for qubit, angle in enumerate(column):
             if column_index % 4 in {2, 0} and column_index > 0:
                 brick_layer = (column_index - 1) // 4
                 if qubit % 2 == brick_layer % 2 and qubit != brickwork_width - 1:
-                    pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
-            pattern.extend(j_commands(nodes[qubit], nodes[qubit] + brickwork_width, -angle))
-            nodes[qubit] = n_nodes
+                    pattern.add(E(nodes=(indices[qubit], indices[qubit + 1])))
+            pattern.extend(j_commands(indices[qubit], indices[qubit] + brickwork_width, -angle))
+            indices[qubit] = n_nodes
             n_nodes += 1
     last_brick_layer = (len(table) - 1) // 4
     for qubit in range(last_brick_layer % 2, brickwork_width - 1, 2):
-        pattern.add(E(nodes=(nodes[qubit], nodes[qubit + 1])))
+        pattern.add(E(nodes=(indices[qubit], indices[qubit + 1])))
     return pattern
 
 
@@ -745,5 +758,109 @@ def transpile_brickwork(circuit: Circuit) -> TranspileResult:
     """
     n_node = circuit.width
     pattern = layers_to_pattern(n_node, transpile_to_layers(circuit))
+    classical_outputs: list[int] = []
+    return TranspileResult(pattern, tuple(classical_outputs))
+
+
+def measurement_table_to_pattern_cf(width: int, table: list[list[ParameterizedAngle]]) -> Pattern:
+    """Convert a measurement table into a MBQC measurement pattern using causal flow."""
+    indices = list(range(width))
+    brickwork_width = width
+    n_nodes = width
+    measurements: dict[int, Measurement] = {}
+    if width != len(table[0]):  # Add extra width nodes in the brickwork design that are not input nodes in the circuit
+        assert width == len(table[0]) - 1  # noqa: S101
+        indices.append(n_nodes)
+        brickwork_width += 1
+        n_nodes += 1
+    graph: nx.Graph[int] = nx.Graph()  # type: ignore[attr-defined, unused-ignore, name-defined]
+    graph.add_nodes_from(range(brickwork_width))
+    x_corrections: dict[int, AbstractSet[int]] = {}
+    for column_index, column in enumerate(table):
+        for qubit, angle in enumerate(column):
+            if indices[qubit] is None:
+                raise IllformedCircuitError
+            if column_index % 4 in {2, 0} and column_index > 0:
+                brick_layer = (column_index - 1) // 4
+                if qubit % 2 == brick_layer % 2 and qubit != brickwork_width - 1:
+                    if indices[qubit] is None or indices[qubit + 1] is None:
+                        raise IllformedCircuitError
+                    if graph.has_edge(indices[qubit], indices[qubit + 1]):
+                        raise ValueError("Unexpected edge already present in graph.")
+                    graph.add_edge(indices[qubit], indices[qubit + 1])
+            graph.add_edge(indices[qubit], indices[qubit] + brickwork_width)
+            measurements[indices[qubit]] = Measurement(-angle, plane=Plane.XY)
+            x_corrections[indices[qubit]] = {indices[qubit] + brickwork_width}
+            indices[qubit] = n_nodes
+            n_nodes += 1
+    last_brick_layer = (len(table) - 1) // 4
+    for qubit in range(last_brick_layer % 2, brickwork_width - 1, 2):
+        if indices[qubit] is None or indices[qubit + 1] is None:
+            raise IllformedCircuitError
+        if graph.has_edge(indices[qubit], indices[qubit + 1]):
+            graph.remove_edge(indices[qubit], indices[qubit + 1])
+        else:
+            graph.add_edge(indices[qubit], indices[qubit + 1])
+    outputs = [i for i in indices if i is not None]
+    og = OpenGraph(
+        graph=graph, input_nodes=tuple(range(brickwork_width)), output_nodes=tuple(outputs), measurements=measurements
+    )
+    z_corrections: dict[int, AbstractSet[int]] = {}
+    for node, correctors in x_corrections.items():
+        (corrector,) = correctors
+        z_targets = set(graph.neighbors(corrector)) - {node}
+        if z_targets:
+            z_corrections[node] = z_targets
+    partial_order_layers = _corrections_to_partial_order_layers(og, x_corrections, z_corrections)
+    return CausalFlow(og, x_corrections, partial_order_layers).to_corrections().to_pattern()
+
+
+def layers_to_pattern_cf(width: int, layers: list[Layer]) -> Pattern:
+    """Convert layers of bricks into a MBQC measurement pattern.
+
+    This is a convenience function that combines `layers_to_measurement_table` and `measurement_table_to_pattern`.
+
+    Parameters
+    ----------
+    width : int
+        number of qubits in the circuit
+    layers : list[Layer]
+        the list of layers representing the brickwork state
+    order : ConstructionOrder, optional
+        the construction order to use for building the pattern, by default ConstructionOrder.Canonical
+
+    Returns
+    -------
+    Pattern
+        the resulting MBQC measurement pattern
+
+    """
+    table = layers_to_measurement_table(layers)
+    return measurement_table_to_pattern_cf(width, table)
+
+
+def transpile_brickwork_cf(circuit: Circuit) -> TranspileResult:
+    """Transpile the circuit to a brickwork pattern defined in the Universal Blind Quantum Computation.
+
+    Parameters
+    ----------
+    circuit : Circuit
+        the circuit to transpile, which should contain only CNOT, RX and RZ gates
+
+    order : ConstructionOrder
+        Order in which to construct the brickwork pattern. Default is Canonical.
+
+    Returns
+    -------
+    result : :class:`TranspileResult` object
+
+    Raises
+    ------
+    ValueError
+        if the order is not recognized
+
+    """
+    n_node = circuit.width
+    pattern = layers_to_pattern_cf(n_node, transpile_to_layers(circuit))
     classical_outputs: list[int] = []
     return TranspileResult(pattern, tuple(classical_outputs))
