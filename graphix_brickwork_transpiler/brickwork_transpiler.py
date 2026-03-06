@@ -16,9 +16,9 @@ from graphix.flow.core import (
     CausalFlow,
     _corrections_to_partial_order_layers,  # noqa: PLC2701
 )
-from graphix.fundamentals import ANGLE_PI, ParameterizedAngle, Plane
+from graphix.fundamentals import ANGLE_PI, ParameterizedAngle
 from graphix.instruction import InstructionKind
-from graphix.measurements import Measurement
+from graphix.measurements import BlochMeasurement, Measurement
 from graphix.opengraph import OpenGraph
 from graphix.transpiler import Circuit, TranspileResult
 from graphix_jcz_transpiler.jcz_transpiler import (
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 
 # TODO @emlynsg: Create function to trim zero bricks from the start and end  # noqa: FIX002, TD003
 # TODO @emlynsg: simplification to remove consecutive J(0) in decomposition  # noqa: FIX002, TD003
+
 
 JCNOTInstruction: TypeAlias = (
     J
@@ -702,7 +703,7 @@ def measurement_table_to_pattern(width: int, table: list[list[ParameterizedAngle
                 brick_layer = (column_index - 1) // 4
                 if qubit % 2 == brick_layer % 2 and qubit != brickwork_width - 1:
                     pattern.add(E(nodes=(indices[qubit], indices[qubit + 1])))
-            pattern.extend(j_commands(indices[qubit], indices[qubit] + brickwork_width, -angle))
+            pattern.extend(j_commands(indices[qubit], indices[qubit] + brickwork_width, -1.0 * angle))
             indices[qubit] = n_nodes
             n_nodes += 1
     last_brick_layer = (len(table) - 1) // 4
@@ -767,7 +768,7 @@ def measurement_table_to_pattern_cf(width: int, table: list[list[ParameterizedAn
     indices = list(range(width))
     brickwork_width = width
     n_nodes = width
-    measurements: dict[int, Measurement] = {}
+    measurements: dict[int, BlochMeasurement] = {}
     if width != len(table[0]):  # Add extra width nodes in the brickwork design that are not input nodes in the circuit
         assert width == len(table[0]) - 1  # noqa: S101
         indices.append(n_nodes)
@@ -789,7 +790,7 @@ def measurement_table_to_pattern_cf(width: int, table: list[list[ParameterizedAn
                         raise ValueError("Unexpected edge already present in graph.")
                     graph.add_edge(indices[qubit], indices[qubit + 1])
             graph.add_edge(indices[qubit], indices[qubit] + brickwork_width)
-            measurements[indices[qubit]] = Measurement(-angle, plane=Plane.XY)
+            measurements[indices[qubit]] = Measurement.XY(-angle)
             x_corrections[indices[qubit]] = {indices[qubit] + brickwork_width}
             indices[qubit] = n_nodes
             n_nodes += 1

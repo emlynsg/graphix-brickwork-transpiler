@@ -81,10 +81,12 @@ def test_circuit_simulation(circuit: Circuit, fx_rng: Generator) -> None:
 def test_circuit_simulation_pp(circuit: Circuit, fx_rng: Generator) -> None:
     """Test circuit transpilation comparing statevector backend with default transpiler."""
     pattern_brickwork = transpile_brickwork(circuit).pattern
+    pattern_brickwork.infer_pauli_measurements()
     pattern_brickwork.remove_input_nodes()
     pattern_brickwork.perform_pauli_measurements()
     pattern_brickwork.standardize()
     pattern_original = transpile_jcz(circuit).pattern
+    pattern_original.infer_pauli_measurements()
     pattern_original.remove_input_nodes()
     pattern_original.perform_pauli_measurements()
     pattern_original.standardize()
