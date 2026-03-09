@@ -15,7 +15,7 @@ from graphix.fundamentals import ANGLE_PI, Axis
 from graphix.parameter import Placeholder
 from graphix.random_objects import rand_circuit
 from graphix.sim import DensityMatrix
-from graphix.transpiler import Circuit
+from graphix.transpiler import Circuit, transpile_swaps
 from graphix_jcz_transpiler.jcz_transpiler import J, transpile_jcz
 from numpy.random import Generator
 
@@ -60,11 +60,13 @@ SIM_BASIC_CIRCUITS = [
 
 
 @pytest.mark.parametrize("circuit", TEST_BASIC_CIRCUITS)
-def test_circuit_simulation(circuit: Circuit, fx_rng: Generator) -> None:
+def test_circuit_simulation(circ: Circuit, fx_rng: Generator) -> None:
     """Test circuit transpilation comparing density matrix backends."""
     bs = ConstBranchSelector(0)
+    circuit = transpile_swaps(circ).circuit
     pattern_brickwork = transpile_brickwork(circuit).pattern
     pattern_brickwork.remove_input_nodes()
+    pattern_brickwork = pattern_brickwork.infer_pauli_measurements()
     pattern_brickwork.perform_pauli_measurements()
     pattern_brickwork.standardize()
     state_original = circuit.simulate_statevector(branch_selector=bs).statevec
@@ -78,16 +80,17 @@ def test_circuit_simulation(circuit: Circuit, fx_rng: Generator) -> None:
 
 
 @pytest.mark.parametrize("circuit", TEST_BASIC_CIRCUITS)
-def test_circuit_simulation_pp(circuit: Circuit, fx_rng: Generator) -> None:
+def test_circuit_simulation_pp(circ: Circuit, fx_rng: Generator) -> None:
     """Test circuit transpilation comparing statevector backend with default transpiler."""
+    circuit = transpile_swaps(circ).circuit
     pattern_brickwork = transpile_brickwork(circuit).pattern
-    pattern_brickwork.infer_pauli_measurements()
     pattern_brickwork.remove_input_nodes()
+    pattern_brickwork = pattern_brickwork.infer_pauli_measurements()
     pattern_brickwork.perform_pauli_measurements()
     pattern_brickwork.standardize()
     pattern_original = transpile_jcz(circuit).pattern
-    pattern_original.infer_pauli_measurements()
     pattern_original.remove_input_nodes()
+    pattern_original = pattern_original.infer_pauli_measurements()
     pattern_original.perform_pauli_measurements()
     pattern_original.standardize()
     state_original = pattern_original.simulate_pattern(rng=fx_rng)
@@ -224,11 +227,13 @@ class TestBrickworkTranspilerParametrized:
 
 
 @pytest.mark.parametrize("circuit", TEST_BASIC_CIRCUITS)
-def test_circuit_simulation_cf(circuit: Circuit, fx_rng: Generator) -> None:
+def test_circuit_simulation_cf(circ: Circuit, fx_rng: Generator) -> None:
     """Test circuit transpilation comparing state vector back-ends."""
     bs = ConstBranchSelector(0)
+    circuit = transpile_swaps(circ).circuit
     pattern_brickwork = transpile_brickwork_cf(circuit).pattern
     pattern_brickwork.remove_input_nodes()
+    pattern_brickwork = pattern_brickwork.infer_pauli_measurements()
     pattern_brickwork.perform_pauli_measurements()
     pattern_brickwork.standardize()
     state_original = circuit.simulate_statevector().statevec
@@ -242,14 +247,17 @@ def test_circuit_simulation_cf(circuit: Circuit, fx_rng: Generator) -> None:
 
 
 @pytest.mark.parametrize("circuit", TEST_BASIC_CIRCUITS)
-def test_circuit_simulation_pp_cf(circuit: Circuit, fx_rng: Generator) -> None:
+def test_circuit_simulation_pp_cf(circ: Circuit, fx_rng: Generator) -> None:
     """Test circuit transpilation comparing state vector back-end with default transpiler."""
+    circuit = transpile_swaps(circ).circuit
     pattern_brickwork = transpile_brickwork_cf(circuit).pattern
     pattern_brickwork.remove_input_nodes()
+    pattern_brickwork = pattern_brickwork.infer_pauli_measurements()
     pattern_brickwork.perform_pauli_measurements()
     pattern_brickwork.standardize()
     pattern_original = transpile_jcz(circuit).pattern
     pattern_original.remove_input_nodes()
+    pattern_original = pattern_original.infer_pauli_measurements()
     pattern_original.perform_pauli_measurements()
     pattern_original.standardize()
     state_original = pattern_original.simulate_pattern(rng=fx_rng)
