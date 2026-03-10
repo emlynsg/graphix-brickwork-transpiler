@@ -106,7 +106,7 @@ def test_circuit_simulation_pp(circuit: Circuit, fx_rng: Generator) -> None:
 def test_circuit_flow(circuit: Circuit) -> None:
     """Test transpiled circuits have flow."""
     pattern = transpile_brickwork(circuit).pattern
-    f = pattern.extract_opengraph().find_causal_flow()
+    f = pattern.extract_opengraph().find_causal_flow()  # pyright: ignore[reportAttributeAccessIssue]
     assert f is not None
 
 
@@ -273,7 +273,7 @@ def test_circuit_simulation_pp_cf(circuit: Circuit, fx_rng: Generator) -> None:
 def test_circuit_flow_cf(circuit: Circuit) -> None:
     """Test transpiled circuits have flow."""
     pattern = transpile_brickwork_cf(circuit).pattern
-    f = pattern.extract_opengraph().find_causal_flow()
+    f = pattern.extract_opengraph().find_causal_flow()  # pyright: ignore[reportAttributeAccessIssue]
     assert f is not None
 
 

@@ -763,7 +763,7 @@ def transpile_brickwork(circuit: Circuit) -> TranspileResult:
     return TranspileResult(pattern, tuple(classical_outputs))
 
 
-def measurement_table_to_pattern_cf(width: int, table: list[list[ParameterizedAngle]]) -> Pattern:
+def measurement_table_to_cf(width: int, table: list[list[ParameterizedAngle]]) -> Pattern:
     """Convert a measurement table into a MBQC measurement pattern using causal flow."""
     indices = list(range(width))
     brickwork_width = width
@@ -816,7 +816,7 @@ def measurement_table_to_pattern_cf(width: int, table: list[list[ParameterizedAn
     return CausalFlow(og, x_corrections, partial_order_layers).to_corrections().to_pattern()
 
 
-def layers_to_pattern_cf(width: int, layers: list[Layer]) -> Pattern:
+def layers_to_cf(width: int, layers: list[Layer]) -> Pattern:
     """Convert layers of bricks into a MBQC measurement pattern.
 
     This is a convenience function that combines `layers_to_measurement_table` and `measurement_table_to_pattern`.
@@ -837,7 +837,7 @@ def layers_to_pattern_cf(width: int, layers: list[Layer]) -> Pattern:
 
     """
     table = layers_to_measurement_table(layers)
-    return measurement_table_to_pattern_cf(width, table)
+    return measurement_table_to_cf(width, table)
 
 
 def transpile_brickwork_cf(circuit: Circuit) -> TranspileResult:
@@ -862,6 +862,6 @@ def transpile_brickwork_cf(circuit: Circuit) -> TranspileResult:
 
     """
     n_node = circuit.width
-    pattern = layers_to_pattern_cf(n_node, transpile_to_layers(circuit))
+    pattern = layers_to_cf(n_node, transpile_to_layers(circuit))
     classical_outputs: list[int] = []
     return TranspileResult(pattern, tuple(classical_outputs))

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from graphix_brickwork_transpiler.brickwork_transpiler import (
     instruction_to_jcnot,
+    layers_to_cf,
+    measurement_table_to_cf,
     nqubits_from_layers,
     transpile_brickwork,
     transpile_brickwork_cf,
@@ -15,6 +17,8 @@ from graphix_brickwork_transpiler.brickwork_transpiler import (
 
 __all__ = [
     "instruction_to_jcnot",
+    "layers_to_cf",
+    "measurement_table_to_cf",
     "nqubits_from_layers",
     "transpile_brickwork",
     "transpile_brickwork_cf",
